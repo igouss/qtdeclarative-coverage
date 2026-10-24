@@ -240,8 +240,49 @@ the counts so far at any time, and receives each engine's remaining counts when
 the engine is destroyed. Lines that were loaded but never executed are reported
 with a count of zero.
 
-Start the application with the \c block option, and with \c CodeCoverage as
-the only debugger service:
+The \c qmlcoverage tool runs an application with this service and writes what
+it executed as an \l{https://github.com/linux-test-project/lcov}{lcov} tracefile,
+for example for a Qt Quick Test suite:
+
+\badcode
+    qmlcoverage -o coverage.info qmltestrunner -input tests
+\endcode
+
+Sources loaded from resources (\c qrc:) are written next to the tracefile, in
+\c{coverage.info.src}, or in the directory given with \c{--sources}. A file
+with neither a local path nor a source that the application sent is left out.
+On Unix, sending \c qmlcoverage SIGINT or SIGTERM, for example with Ctrl+C,
+collects what an application that runs until stopped has executed so far,
+stops it, and writes the tracefile.
+
+\c qmlcoverage exits with the exit code of the application, with 0 after it
+has stopped the application on a signal, or with one of these:
+
+\table
+\header
+    \li Exit code
+    \li Meaning
+\row
+    \li 2
+    \li No application was given, it could not be started, or the tracefile
+        could not be written.
+\row
+    \li 3
+    \li The application crashed. No tracefile is written.
+\row
+    \li 4
+    \li No coverage was received, or a message of the service could not be
+        read. No tracefile is written, so that a missing
+        plugin or an application that does not enable QML debugging is not
+        mistaken for code that never ran.
+\row
+    \li 5
+    \li Not every engine answered within 10 seconds after the signal, for
+        example because one was busy. The tracefile holds what was received.
+\endtable
+
+Other clients start the application with the \c block option, and with
+\c CodeCoverage as the only debugger service:
 
 \c {-qmljsdebugger=file:<local socket>,block,services:CodeCoverage}
 

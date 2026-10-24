@@ -139,6 +139,12 @@ qt_feature("qml-profiler" PRIVATE
     PURPOSE "Supports retrieving QML tracing data from an application."
     CONDITION ( QT_FEATURE_commandlineparser ) AND ( QT_FEATURE_qml_debug ) AND ( QT_FEATURE_qml_network AND QT_FEATURE_localserver ) AND ( QT_FEATURE_xmlstreamwriter ) AND QT_FEATURE_process
 )
+qt_feature("qml-coverage" PRIVATE
+    SECTION "QML"
+    LABEL "Command line QML code coverage tool"
+    PURPOSE "Writes the QML and JavaScript lines an application executed as lcov."
+    CONDITION ( QT_FEATURE_commandlineparser ) AND ( QT_FEATURE_qml_debug ) AND ( QT_FEATURE_qml_network AND QT_FEATURE_localserver ) AND QT_FEATURE_process
+)
 qt_feature("qml-preview" PRIVATE
     SECTION "QML"
     LABEL "Command line QML Preview tool"
