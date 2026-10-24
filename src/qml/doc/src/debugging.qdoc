@@ -232,6 +232,44 @@ or
 When the application is running, an IDE or a tool that implements the binary
 protocol can connect to the open port.
 
+\section2 Measuring code coverage
+
+The \c CodeCoverage service records which lines and functions of QML and
+JavaScript code each QML engine executes, and how often. A client can ask for
+the counts so far at any time, and receives each engine's remaining counts when
+the engine is destroyed. Lines that were loaded but never executed are reported
+with a count of zero.
+
+Start the application with the \c block option, and with \c CodeCoverage as
+the only debugger service:
+
+\c {-qmljsdebugger=file:<local socket>,block,services:CodeCoverage}
+
+\list
+    \li \c block is required: whether code is compiled for coverage is decided
+        when an engine is set up, so only engines created after the client has
+        connected are covered.
+    \li An engine can host only one debugger, and the QML debugger takes
+        precedence. If the \c V8Debugger or \c NativeQmlDebugger service is
+        loaded as well, as happens when \c services is left out, the
+        \c CodeCoverage service prints a warning and covers nothing.
+    \li Covered code runs in the interpreter. The JIT is not used, and code
+        compiled ahead of time by \l{qmlcachegen} or loaded from the disk cache
+        is compiled again from source. Coverage therefore includes such code, but
+        the application runs slower.
+\endlist
+
+The counts are per line and per function call. They have these limits:
+
+\list
+    \li There is no branch coverage. Two outcomes on one line, as in
+        \c {a ? b : c}, cannot be told apart.
+    \li The header line of a \c for loop counts each time the loop is entered,
+        not each time its condition is tested.
+    \li Only engines on the application's main thread are covered, as with the
+        other debugging services.
+\endlist
+
 \section1 Debugging with \QC
 
 \QC uses the debugging infrastructure to debug, inspect, and profile QML

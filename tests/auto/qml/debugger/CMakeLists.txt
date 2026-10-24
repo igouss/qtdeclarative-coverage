@@ -19,6 +19,7 @@ if(NOT (CMAKE_CROSSCOMPILING OR (MACOS AND TEST_architecture_arch STREQUAL "x86_
     add_subdirectory(qqmlprofilerservice)
     add_subdirectory(qqmlenginedebuginspectorintegrationtest)
     add_subdirectory(qqmlenginecontrol)
+    add_subdirectory(qqmlcoverageservice)
     add_subdirectory(qqmldebuggingenabler)
     add_subdirectory(qqmldebugprocess)
     add_subdirectory(qqmlpreview)
