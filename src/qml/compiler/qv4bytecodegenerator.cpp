@@ -16,6 +16,15 @@ void BytecodeGenerator::setLocation(const QQmlJS::SourceLocation &loc)
     currentSourceLocation = loc;
 }
 
+void BytecodeGenerator::setLocationOfLastInstruction()
+{
+    if (instructions.isEmpty())
+        return;
+    currentLine = instructions.constLast().line;
+    if (m_sourceLocationTable)
+        currentSourceLocation = m_sourceLocationTable->entries.constLast().location;
+}
+
 void BytecodeGenerator::incrementStatement()
 {
     ++currentStatement;

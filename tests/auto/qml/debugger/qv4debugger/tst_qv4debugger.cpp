@@ -342,6 +342,8 @@ private slots:
 
     void evaluateExpression();
     void stepToEndOfScript();
+    void stepToEndOfScriptEndingWithoutCode_data();
+    void stepToEndOfScriptEndingWithoutCode();
 
     void lastLineOfConditional_data();
     void lastLineOfConditional();
@@ -1026,6 +1028,29 @@ void tst_qv4debugger::stepToEndOfScript()
     QV4Debugger::ExecutionState state = m_debuggerAgent->m_statesWhenPaused.at(4);
     QCOMPARE(state.fileName, QString("toEnd"));
     QCOMPARE(state.lineNumber, -4); // A return instruction without proper line number.
+}
+
+void tst_qv4debugger::stepToEndOfScriptEndingWithoutCode_data()
+{
+    QTest::addColumn<QString>("tail");
+
+    QTest::newRow("function") << "function f() {\n    return ret;\n}\n";
+    QTest::newRow("declaration") << "var unused;\n";
+}
+
+void tst_qv4debugger::stepToEndOfScriptEndingWithoutCode()
+{
+    QFETCH(QString, tail);
+
+    // Line 1 holds the script's last code; the return belongs to it.
+    const QString script = "var ret = 0;\n" + tail;
+    debugger()->addBreakPoint("endsWithoutCode", 1);
+    m_debuggerAgent->m_resumeSpeed = QV4Debugger::StepOver;
+    evaluateJavaScript(script, "endsWithoutCode");
+    QVERIFY(m_debuggerAgent->m_wasPaused);
+    QCOMPARE(m_debuggerAgent->m_statesWhenPaused.size(), 2);
+    QCOMPARE(m_debuggerAgent->m_statesWhenPaused.at(0).lineNumber, 1);
+    QCOMPARE(m_debuggerAgent->m_statesWhenPaused.at(1).lineNumber, -1);
 }
 
 void tst_qv4debugger::lastLineOfConditional_data()
