@@ -53,7 +53,7 @@ namespace Compiler {
     struct JSUnitGenerator;
     class Codegen;
 
-    enum class CompilationMode { Release, Debug };
+    enum class CompilationMode { Release, Debug, Coverage };
 }
 
 namespace Moth {

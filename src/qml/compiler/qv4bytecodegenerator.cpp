@@ -138,8 +138,94 @@ void BytecodeGenerator::compressInstructions()
     adjustJumpOffsets();
 }
 
+// Puts a Debug instruction on every edge along which control enters a line from another line, and
+// at the function's entry. The Debug instruction carries the line it enters.
+void BytecodeGenerator::countLineEntries()
+{
+    const QList<I> generated = std::exchange(instructions, {});
+    QList<QV4::Compiler::Context::SourceLocationTable::Entry> locations;
+    if (m_sourceLocationTable)
+        locations = std::exchange(m_sourceLocationTable->entries, {});
+    const qsizetype count = generated.size();
+    const qsizetype generatedLabels = labels.size();
+
+    const auto fallsThrough = [](const I &i) {
+        return i.type != Instr::Type::Jump && i.type != Instr::Type::Ret
+                && i.type != Instr::Type::ThrowException;
+    };
+    const auto targetOf = [this](const I &i) { return labels.at(i.linkedLabel); };
+
+    // An entry by falling through is counted in line; an entry by a jump is counted out of line
+    // when nothing is counted in line to jump to.
+    QList<bool> countInLine(count, false);
+    QList<bool> countOutOfLine(count, false);
+    for (qsizetype t = 0; t < count; ++t) {
+        countInLine[t] = generated[t].line > 0
+                && (t == 0
+                    || (fallsThrough(generated[t - 1])
+                        && generated[t - 1].line != generated[t].line));
+    }
+    for (const I &i : generated) {
+        if (i.linkedLabel == -1)
+            continue;
+        const int t = targetOf(i);
+        if (generated[t].line > 0 && generated[t].line != i.line && !countInLine[t])
+            countOutOfLine[t] = true;
+    }
+
+    const auto addCount = [this](const I &at) {
+        currentLine = at.line;
+        currentStatement = at.statement;
+        currentSourceLocation = QQmlJS::SourceLocation();
+        clearLastInstruction();
+        addInstruction(Instruction::Debug());
+    };
+
+    QList<int> newIndex(count, -1);
+    QList<int> countIndex(count, -1);
+    for (qsizetype t = 0; t < count; ++t) {
+        if (countInLine[t]) {
+            countIndex[t] = instructions.size();
+            addCount(generated[t]);
+        }
+        newIndex[t] = instructions.size();
+        instructions.append(generated[t]);
+        if (m_sourceLocationTable)
+            m_sourceLocationTable->entries.append(locations.at(t));
+    }
+
+    for (qsizetype t = 0; t < count; ++t) {
+        if (!countOutOfLine[t])
+            continue;
+        countIndex[t] = instructions.size();
+        addCount(generated[t]);
+        addJumpInstruction(Instruction::Jump()).link(Label(this, Label::LinkLater));
+        labels[instructions.constLast().linkedLabel] = newIndex[t];
+    }
+
+    for (qsizetype t = 0; t < count; ++t) {
+        const I &generatedInstruction = generated[t];
+        if (generatedInstruction.linkedLabel == -1)
+            continue;
+        const int target = targetOf(generatedInstruction);
+        const bool entersLine = generated[target].line > 0
+                && generated[target].line != generatedInstruction.line;
+        I &instruction = instructions[newIndex[t]];
+        instruction.linkedLabel = labels.size();
+        labels.append(entersLine ? countIndex[target] : newIndex[target]);
+    }
+
+    for (qsizetype k = 0; k < generatedLabels; ++k) {
+        if (labels[k] >= 0 && labels[k] < count)
+            labels[k] = newIndex[labels[k]];
+    }
+}
+
 void BytecodeGenerator::finalize(Compiler::Context *context)
 {
+    if (compilationMode == Compiler::CompilationMode::Coverage)
+        countLineEntries();
+
     compressInstructions();
 
     // collect content and line numbers

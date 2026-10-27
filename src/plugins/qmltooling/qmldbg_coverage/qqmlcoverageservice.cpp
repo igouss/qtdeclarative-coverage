@@ -74,6 +74,11 @@ public:
     // Debug instructions only reach maybeBreakAtInstruction() when this returns true.
     bool pauseAtNextOpportunity() const override { return true; }
 
+    QV4::Compiler::CompilationMode compilationMode() const override
+    {
+        return QV4::Compiler::CompilationMode::Coverage;
+    }
+
     void maybeBreakAtInstruction() override
     {
         const QV4::CppStackFrame *frame = m_engine->currentStackFrame;

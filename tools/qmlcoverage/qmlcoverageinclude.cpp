@@ -59,10 +59,10 @@ std::optional<File> compile(const QString &path, QString *error)
     QQmlJSCompileError compileError;
     bool compiled = false;
     if (path.endsWith(u".qml"_s)) {
-        QmlIR::Document document(QString(), QString(), CompilationMode::Debug);
+        QmlIR::Document document(QString(), QString(), CompilationMode::Coverage);
         compiled = qCompileQmlFile(document, path, keep, nullptr, &compileError);
     } else {
-        compiled = qCompileJSFile(path, QString(), keep, &compileError, CompilationMode::Debug);
+        compiled = qCompileJSFile(path, QString(), keep, &compileError, CompilationMode::Coverage);
     }
     if (!compiled) {
         *error = compileError.message;
