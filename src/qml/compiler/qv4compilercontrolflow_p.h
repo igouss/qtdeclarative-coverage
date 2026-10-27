@@ -376,6 +376,7 @@ struct ControlFlowFinally : public ControlFlowUnwind
 
         Codegen::RegisterScope scope(cg);
 
+        generator()->setSynthetic(true);
         insideFinally = true;
         int returnValueTemp = -1;
         if (cg->requiresReturnValue) {
@@ -391,8 +392,10 @@ struct ControlFlowFinally : public ControlFlowUnwind
         Reference::fromStackSlot(cg, exceptionTemp).storeConsumeAccumulator();
 
         generator()->setUnwindHandler(parentUnwindHandler());
+        generator()->setSynthetic(false);
         cg->statement(finally->statement);
         insideFinally = false;
+        generator()->setSynthetic(true);
 
         if (cg->requiresReturnValue) {
             Instruction::MoveReg move;
@@ -405,6 +408,7 @@ struct ControlFlowFinally : public ControlFlowUnwind
         generator()->addInstruction(setException);
 
         emitUnwindHandler();
+        generator()->setSynthetic(false);
     }
 };
 
