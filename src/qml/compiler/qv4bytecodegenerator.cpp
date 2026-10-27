@@ -165,8 +165,12 @@ void BytecodeGenerator::countLineEntries()
                     || (fallsThrough(generated[t - 1])
                         && generated[t - 1].line != generated[t].line));
     }
+    // A handler is entered from whatever throws or unwinds, not from where it is installed.
+    const auto isEdge = [](const I &i) {
+        return i.linkedLabel != -1 && i.type != Instr::Type::SetUnwindHandler;
+    };
     for (const I &i : generated) {
-        if (i.linkedLabel == -1)
+        if (!isEdge(i))
             continue;
         const int t = targetOf(i);
         if (generated[t].line > 0 && generated[t].line != i.line && !countInLine[t])
@@ -186,6 +190,11 @@ void BytecodeGenerator::countLineEntries()
     for (qsizetype t = 0; t < count; ++t) {
         if (countInLine[t]) {
             countIndex[t] = instructions.size();
+            if (t == 0 && startLine > 0 && startLine != generated[t].line) {
+                I header = generated[t];
+                header.line = startLine;
+                addCount(header);
+            }
             addCount(generated[t]);
         }
         newIndex[t] = instructions.size();
@@ -208,7 +217,7 @@ void BytecodeGenerator::countLineEntries()
         if (generatedInstruction.linkedLabel == -1)
             continue;
         const int target = targetOf(generatedInstruction);
-        const bool entersLine = generated[target].line > 0
+        const bool entersLine = isEdge(generatedInstruction) && generated[target].line > 0
                 && generated[target].line != generatedInstruction.line;
         I &instruction = instructions[newIndex[t]];
         instruction.linkedLabel = labels.size();
@@ -235,7 +244,6 @@ void BytecodeGenerator::finalize(Compiler::Context *context)
     currentLine = -1;
     currentStatement = -1;
 
-    Q_UNUSED(startLine);
     for (qsizetype i = 0; i < instructions.size(); i++) {
         if (instructions[i].line != currentLine || instructions[i].statement != currentStatement) {
             currentLine = instructions[i].line;
