@@ -350,7 +350,8 @@ bool qCompileQmlFile(QmlIR::Document &irDocument, const QString &inputFileName,
 
 bool qCompileJSFile(
         const QString &inputFileName, const QString &inputFileUrl,
-        const QQmlJSSaveFunction &saveFunction, QQmlJSCompileError *error)
+        const QQmlJSSaveFunction &saveFunction, QQmlJSCompileError *error,
+        QV4::Compiler::CompilationMode compilationMode)
 {
     Q_UNUSED(inputFileUrl);
 
@@ -375,13 +376,13 @@ bool qCompileJSFile(
         QList<QQmlJS::DiagnosticMessage> diagnostics;
         // Precompiled files are relocatable and the final location will be set when loading.
         QString url;
-        unit = QV4::Compiler::Codegen::compileModule(QV4::Compiler::CompilationMode::Release, url, sourceCode,
+        unit = QV4::Compiler::Codegen::compileModule(compilationMode, url, sourceCode,
                                                      QDateTime(), &diagnostics);
         error->appendDiagnostics(inputFileName, diagnostics);
         if (!unit || !unit->unitData())
             return false;
     } else {
-        QmlIR::Document irDocument(QString(), QString(), QV4::Compiler::CompilationMode::Release);
+        QmlIR::Document irDocument(QString(), QString(), compilationMode);
 
         QQmlJS::Engine *engine = &irDocument.jsParserEngine;
         QmlIR::ScriptDirectivesCollector directivesCollector(&irDocument);

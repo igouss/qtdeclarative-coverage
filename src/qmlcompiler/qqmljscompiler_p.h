@@ -144,7 +144,9 @@ bool Q_QMLCOMPILER_EXPORT qCompileQmlFile(QmlIR::Document &irDocument, const QSt
                                           const QString *fileContents = nullptr);
 bool Q_QMLCOMPILER_EXPORT qCompileJSFile(const QString &inputFileName, const QString &inputFileUrl,
                                          const QQmlJSSaveFunction &saveFunction,
-                                         QQmlJSCompileError *error);
+                                         QQmlJSCompileError *error,
+                                         QV4::Compiler::CompilationMode compilationMode =
+                                                 QV4::Compiler::CompilationMode::Release);
 
 bool Q_QMLCOMPILER_EXPORT qSaveQmlJSUnitAsCpp(const QString &inputFileName,
                                               const QString &outputFileName,
