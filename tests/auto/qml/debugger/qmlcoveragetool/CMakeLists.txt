@@ -16,6 +16,7 @@ qt_internal_add_test(tst_qmlcoveragetool
     SOURCES
         tst_qmlcoveragetool.cpp
     LIBRARIES
+        Qt::Network
         Qt::Test
     TESTDATA ${test_data}
 )

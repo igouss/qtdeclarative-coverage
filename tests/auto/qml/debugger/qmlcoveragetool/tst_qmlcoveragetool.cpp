@@ -8,6 +8,7 @@
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qurl.h>
+#include <QtNetwork/qtcpserver.h>
 #include <QtTest/qtest.h>
 
 #ifdef Q_OS_UNIX
@@ -101,11 +102,18 @@ private slots:
     void includesAFileLoadedThroughAnotherPath();
     void skipsIncludedFilesThatDoNotCompile();
     void failsOnAMissingIncludeDirectory();
+    void attachesToAProgramThatServesItself();
+    void detachesOnSigtermAndLeavesTheProgramRunning();
+    void waitsForTheProgramToListen();
+    void failsWhenNothingListensOnTheAttachPort();
+    void failsOnAnAttachPortThatIsNoNumber();
+    void failsWhenAttachingAndGivenAProgram();
 
 private:
     int runTool(const QStringList &arguments, const QStringList &environment = { });
     QString helper() const;
     QString includeDir() const { return QFINDTESTDATA("data/include"); }
+    QString freePort() const;
     QString lcov() const { return readAll(m_output); }
 
     QString m_binDir;
@@ -138,6 +146,15 @@ int tst_QmlCoverageTool::runTool(const QStringList &arguments, const QStringList
         return -1;
     m_toolOutput = QString::fromUtf8(process.readAll());
     return process.exitStatus() == QProcess::NormalExit ? process.exitCode() : -2;
+}
+
+// Free when asked; a program that serves on it must claim it before anything else does.
+QString tst_QmlCoverageTool::freePort() const
+{
+    QTcpServer server;
+    if (!server.listen(QHostAddress::LocalHost))
+        return QString();
+    return QString::number(server.serverPort());
 }
 
 QString tst_QmlCoverageTool::helper() const
@@ -503,6 +520,94 @@ void tst_QmlCoverageTool::failsOnAMissingIncludeDirectory()
                        includeDir() + u"/none.qml"_s }),
              2);
     QVERIFY(m_toolOutput.contains(u"qmlcoverage: no directory "_s + missing));
+}
+
+// exit.qml quits once it has run, so the program's own server goes away with it.
+void tst_QmlCoverageTool::attachesToAProgramThatServesItself()
+{
+    const QString port = freePort();
+    QVERIFY(!port.isEmpty());
+    const QString qml = QFINDTESTDATA("data/exit.qml");
+    QProcess program;
+    program.setProcessChannelMode(QProcess::MergedChannels);
+    program.start(helper(), { u"serve"_s, port, qml });
+    QVERIFY(program.waitForStarted());
+
+    QCOMPARE(runTool({ u"--attach"_s, port }), 0);
+    QVERIFY(program.waitForFinished());
+    QVERIFY(lcovRecords(lcov(), qml).contains(u"FNDA:1,sumTo"_s));
+}
+
+void tst_QmlCoverageTool::detachesOnSigtermAndLeavesTheProgramRunning()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("qmlcoverage detaches on a signal on Unix only");
+#else
+    const QString port = freePort();
+    QVERIFY(!port.isEmpty());
+    const QString qml = QFINDTESTDATA("data/running.qml");
+    QProcess program;
+    program.setProcessChannelMode(QProcess::MergedChannels);
+    program.start(helper(), { u"serve"_s, port, qml });
+    QVERIFY(program.waitForStarted());
+
+    QProcess tool;
+    tool.setProcessChannelMode(QProcess::MergedChannels);
+    tool.start(m_tool, { u"-o"_s, m_output, u"--attach"_s, port });
+    QByteArray output; // QTRY_VERIFY evaluates more than once, and reading consumes
+    QTRY_VERIFY_WITH_TIMEOUT(readyPid(output += program.readAll()), 30000);
+    tool.terminate();
+    QVERIFY(tool.waitForFinished());
+    QCOMPARE(tool.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(tool.exitCode(), 0);
+    QVERIFY(lcovRecords(lcov(), qml).contains(u"FNDA:1,once"_s));
+    QCOMPARE(program.state(), QProcess::Running);
+    program.kill();
+    QVERIFY(program.waitForFinished());
+#endif
+}
+
+void tst_QmlCoverageTool::waitsForTheProgramToListen()
+{
+    const QString port = freePort();
+    QVERIFY(!port.isEmpty());
+    QProcess tool;
+    tool.setProcessChannelMode(QProcess::MergedChannels);
+    tool.start(m_tool, { u"-o"_s, m_output, u"--attach"_s, port });
+    QVERIFY(tool.waitForStarted());
+    QTest::qWait(1000); // the tool finds nothing listening, and tries again
+
+    const QString qml = QFINDTESTDATA("data/exit.qml");
+    QProcess program;
+    program.setProcessChannelMode(QProcess::MergedChannels);
+    program.start(helper(), { u"serve"_s, port, qml });
+    QVERIFY(tool.waitForFinished());
+    QCOMPARE(tool.exitCode(), 0);
+    QVERIFY(program.waitForFinished());
+    QVERIFY(lcovRecords(lcov(), qml).contains(u"FNDA:1,sumTo"_s));
+}
+
+void tst_QmlCoverageTool::failsWhenNothingListensOnTheAttachPort()
+{
+    const QString port = freePort();
+    QVERIFY(!port.isEmpty());
+    QCOMPARE(runTool({ u"--attach"_s, port }), 2);
+    QVERIFY(m_toolOutput.contains(u"qmlcoverage: cannot connect to port "_s + port));
+    QVERIFY(!QFileInfo::exists(m_output));
+}
+
+void tst_QmlCoverageTool::failsOnAnAttachPortThatIsNoNumber()
+{
+    QCOMPARE(runTool({ u"--attach"_s, u"http"_s }), 2);
+    QVERIFY(m_toolOutput.contains(u"qmlcoverage: not a port: http"_s));
+}
+
+void tst_QmlCoverageTool::failsWhenAttachingAndGivenAProgram()
+{
+    QCOMPARE(runTool({ u"--attach"_s, freePort(), m_binDir + u"/qml"_s,
+                       QFINDTESTDATA("data/exit.qml") }),
+             2);
+    QVERIFY(m_toolOutput.contains(u"qmlcoverage: --attach takes no program"_s));
 }
 
 QTEST_GUILESS_MAIN(tst_QmlCoverageTool)

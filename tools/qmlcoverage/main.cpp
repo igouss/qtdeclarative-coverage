@@ -4,9 +4,12 @@
 // qmlcoverage: runs a QML program with the CodeCoverage debug service and writes lcov.
 //
 //   qmlcoverage -o coverage.info [--include <dir>...] <program> [args...]
+//   qmlcoverage -o coverage.info [--include <dir>...] --attach <port>
 //
 // On Unix, for a program that runs until stopped, send qmlcoverage SIGINT or SIGTERM (Ctrl+C): it
-// takes a final snapshot from every engine, stops the program and writes the report.
+// takes a final snapshot from every engine, stops the program and writes the report. With --attach,
+// it connects to the debug server of a program that started one itself; on the signal, it detaches
+// instead of stopping the program.
 
 #include "qmlcoverageinclude.h"
 #include "qmlcoveragereport.h"
@@ -17,6 +20,7 @@
 
 #include <QtCore/qcommandlineparser.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qdeadlinetimer.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qprocess.h>
 #include <QtCore/qtemporarydir.h>
@@ -88,7 +92,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
             u"Runs a QML program and writes the QML and JavaScript lines and functions it "
             "executed as lcov.\nOn Unix, send SIGINT or SIGTERM to stop a long-running program "
-            "and write what it covered."_s);
+            "and write what it covered, or with --attach, to detach from it."_s);
     parser.addHelpOption();
     parser.addVersionOption();
     parser.setOptionsAfterPositionalArgumentsMode(QCommandLineParser::ParseAsPositionalArguments);
@@ -102,17 +106,38 @@ int main(int argc, char *argv[])
             u"Directory whose QML and JavaScript files the report lists even if the program never "
             "loads them, as not executed. Can be given more than once."_s,
             u"dir"_s);
+    const QCommandLineOption attachOption(
+            u"attach"_s,
+            u"Instead of running a program, connect to the debug server that a program started "
+            "on this local port, with the CodeCoverage service and waiting for a client."_s,
+            u"port"_s);
     parser.addOption(outputOption);
     parser.addOption(sourcesOption);
     parser.addOption(includeOption);
+    parser.addOption(attachOption);
     parser.addPositionalArgument(u"program"_s, u"Program to run."_s);
     parser.addPositionalArgument(u"args"_s, u"Its arguments."_s, u"[args...]"_s);
     parser.process(app);
 
     QStringList command = parser.positionalArguments();
-    if (command.isEmpty())
+    const bool attaching = parser.isSet(attachOption);
+    quint16 port = 0;
+    if (attaching) {
+        if (!command.isEmpty()) {
+            std::fprintf(stderr, "qmlcoverage: --attach takes no program\n");
+            return 2;
+        }
+        bool isNumber = false;
+        port = parser.value(attachOption).toUShort(&isNumber);
+        if (!isNumber || port == 0) {
+            std::fprintf(stderr, "qmlcoverage: not a port: %s\n",
+                         qPrintable(parser.value(attachOption)));
+            return 2;
+        }
+    } else if (command.isEmpty()) {
         parser.showHelp(2);
-    const QString program = command.takeFirst();
+    }
+    const QString program = attaching ? QString() : command.takeFirst();
     const QString output = parser.value(outputOption);
     const QString sourceDir =
             parser.isSet(sourcesOption) ? parser.value(sourcesOption) : output + u".src"_s;
@@ -133,16 +158,46 @@ int main(int argc, char *argv[])
 
     QQmlDebugConnection connection;
     CoverageClient client(&connection); // must exist before the handshake lists clients
-    connection.startLocalServer(socket);
+    const auto quitAfterReports = [&app] {
+        // Reports already sent are queued on the socket; drain them first.
+        QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);
+    };
 
     QProcess process;
-    process.setProcessChannelMode(QProcess::ForwardedChannels);
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    // With stderr on a pipe, Qt may log to the journal instead; we forward stderr, so keep it.
-    if (!env.contains(u"QT_FORCE_STDERR_LOGGING"_s))
-        env.insert(u"QT_FORCE_STDERR_LOGGING"_s, u"1"_s);
-    process.setProcessEnvironment(env);
-    command.prepend(u"-qmljsdebugger=file:%1,block,services:CodeCoverage"_s.arg(socket));
+    // Ends the session: stops the program we run, or leaves the one we attached to running.
+    const auto end = [&] {
+        if (attaching)
+            quitAfterReports();
+        else
+            process.terminate();
+    };
+
+    bool connectFailed = false;
+    // The program may not listen yet, so try again until it does or the deadline passes.
+    const QDeadlineTimer connectDeadline(10000);
+    if (attaching) {
+        QObject::connect(&connection, &QQmlDebugConnection::socketError, &app, [&] {
+            if (connection.isConnected())
+                return;
+            if (connectDeadline.hasExpired()) {
+                connectFailed = true;
+                app.quit();
+                return;
+            }
+            QTimer::singleShot(100, &app, [&] { connection.connectToHost(u"localhost"_s, port); });
+        });
+        QObject::connect(&connection, &QQmlDebugConnection::disconnected, &app, quitAfterReports);
+        connection.connectToHost(u"localhost"_s, port);
+    } else {
+        connection.startLocalServer(socket);
+        process.setProcessChannelMode(QProcess::ForwardedChannels);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        // With stderr on a pipe, Qt may log to the journal instead; we forward stderr, so keep it.
+        if (!env.contains(u"QT_FORCE_STDERR_LOGGING"_s))
+            env.insert(u"QT_FORCE_STDERR_LOGGING"_s, u"1"_s);
+        process.setProcessEnvironment(env);
+        command.prepend(u"-qmljsdebugger=file:%1,block,services:CodeCoverage"_s.arg(socket));
+    }
 
     bool stopping = false;
 #ifdef Q_OS_UNIX
@@ -161,7 +216,7 @@ int main(int argc, char *argv[])
     snapshotTimeout.setInterval(10000);
     const auto stopProgram = [&] {
         snapshotTimeout.stop();
-        process.terminate();
+        end();
     };
     client.onSnapshotComplete = stopProgram;
     // Said now: without any report, the exit code says only that nothing was covered.
@@ -183,7 +238,7 @@ int main(int argc, char *argv[])
             return;
         stopping = true;
         if (client.state() != QQmlDebugClient::Enabled) {
-            process.terminate();
+            end();
             return;
         }
         client.requestSnapshot();
@@ -195,21 +250,26 @@ int main(int argc, char *argv[])
 
     int programExit = 0;
     bool crashed = false;
-    QObject::connect(
-            &process, &QProcess::finished, &app, [&](int code, QProcess::ExitStatus status) {
-                programExit = code;
-                crashed = status != QProcess::NormalExit;
-                // Reports already sent are queued on the socket; drain them first.
-                QMetaObject::invokeMethod(&app, &QCoreApplication::quit, Qt::QueuedConnection);
-            });
-    process.start(program, command);
-    if (!process.waitForStarted()) {
-        std::fprintf(stderr, "qmlcoverage: cannot run %s: %s\n", qPrintable(program),
-                     qPrintable(process.errorString()));
-        return 2;
+    QObject::connect(&process, &QProcess::finished, &app,
+                     [&](int code, QProcess::ExitStatus status) {
+                         programExit = code;
+                         crashed = status != QProcess::NormalExit;
+                         quitAfterReports();
+                     });
+    if (!attaching) {
+        process.start(program, command);
+        if (!process.waitForStarted()) {
+            std::fprintf(stderr, "qmlcoverage: cannot run %s: %s\n", qPrintable(program),
+                         qPrintable(process.errorString()));
+            return 2;
+        }
     }
     app.exec();
 
+    if (connectFailed) {
+        std::fprintf(stderr, "qmlcoverage: cannot connect to port %u\n", unsigned(port));
+        return 2;
+    }
     if (crashed && !stopping) {
         std::fprintf(stderr, "qmlcoverage: %s crashed; no coverage written\n", qPrintable(program));
         return 3;

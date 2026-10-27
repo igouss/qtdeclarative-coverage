@@ -263,6 +263,20 @@ On Unix, sending \c qmlcoverage SIGINT or SIGTERM, for example with Ctrl+C,
 collects what an application that runs until stopped has executed so far,
 stops it, and writes the tracefile.
 
+An application that starts a debug server itself, for example with
+QQmlDebuggingEnabler::startTcpDebugServer(), ignores the \c{-qmljsdebugger}
+argument that \c qmlcoverage passes. Start such an application yourself, with
+its server waiting for a client and loading the \c CodeCoverage service as
+described below, and attach to its port on the local host:
+
+\badcode
+    qmlcoverage -o coverage.info --attach 3768
+\endcode
+
+\c qmlcoverage tries to connect for 10 seconds, and writes the tracefile when
+the application exits. On Unix, SIGINT or SIGTERM collects what was executed so
+far and detaches, leaving the application running.
+
 \c qmlcoverage exits with the exit code of the application, with 0 after it
 has stopped the application on a signal, or with one of these:
 
@@ -272,8 +286,8 @@ has stopped the application on a signal, or with one of these:
     \li Meaning
 \row
     \li 2
-    \li No application was given, it could not be started, or the tracefile
-        could not be written.
+    \li No application was given, it could not be started, \c{--attach} could
+        not connect, or the tracefile could not be written.
 \row
     \li 3
     \li The application crashed. No tracefile is written.
