@@ -6,9 +6,24 @@
 #include <private/qv4compilercontext_p.h>
 #include <private/qqmljsastfwd_p.h>
 
+#include <algorithm>
+
 QT_USE_NAMESPACE
 using namespace QV4;
 using namespace Moth;
+
+static bool endsFlow(Instr::Type type)
+{
+    switch (type) {
+    case Instr::Type::Ret:
+    case Instr::Type::Jump:
+    case Instr::Type::UnwindToLabel:
+    case Instr::Type::ThrowException:
+        return true;
+    default:
+        return false;
+    }
+}
 
 void BytecodeGenerator::setLocation(const QQmlJS::SourceLocation &loc)
 {
@@ -129,8 +144,66 @@ void BytecodeGenerator::compressInstructions()
     adjustJumpOffsets();
 }
 
+void BytecodeGenerator::removeUnreachableInstructions()
+{
+    const qsizetype count = instructions.size();
+    QList<bool> reachable(count, false);
+    QList<qsizetype> pending;
+    if (count > 0)
+        pending.append(0);
+    while (!pending.isEmpty()) {
+        const qsizetype index = pending.takeLast();
+        if (index >= count || reachable.at(index))
+            continue;
+        reachable[index] = true;
+        const I &instruction = instructions.at(index);
+        if (instruction.linkedLabel != -1) {
+            Q_ASSERT(labels.at(instruction.linkedLabel) != -1);
+            pending.append(labels.at(instruction.linkedLabel));
+        }
+        if (!endsFlow(instruction.type))
+            pending.append(index + 1);
+    }
+
+    QList<int> compactedIndex(count + 1);
+    int kept = 0;
+    for (qsizetype index = 0; index < count; ++index) {
+        compactedIndex[index] = kept;
+        if (reachable.at(index))
+            ++kept;
+    }
+    compactedIndex[count] = kept;
+    if (kept == count)
+        return;
+
+    _labelInfos.erase(std::remove_if(_labelInfos.begin(), _labelInfos.end(),
+                                     [&](const LabelInfo &info) {
+                                         const int position = labels.at(info.labelIndex);
+                                         return position >= count || !reachable.at(position);
+                                     }),
+                      _labelInfos.end());
+    for (int &position : labels) {
+        if (position != -1)
+            position = compactedIndex.at(position);
+    }
+
+    qsizetype next = 0;
+    for (qsizetype index = 0; index < count; ++index) {
+        if (!reachable.at(index))
+            continue;
+        instructions[next] = instructions.at(index);
+        if (m_sourceLocationTable)
+            m_sourceLocationTable->entries[next] = m_sourceLocationTable->entries.at(index);
+        ++next;
+    }
+    instructions.resize(next);
+    if (m_sourceLocationTable)
+        m_sourceLocationTable->entries.resize(next);
+}
+
 void BytecodeGenerator::finalize(Compiler::Context *context)
 {
+    removeUnreachableInstructions();
     compressInstructions();
 
     // collect content and line numbers

@@ -294,6 +294,7 @@ private:
         unsigned char packed[sizeof(Instr) + 2]; // 2 for instruction type
     };
 
+    void removeUnreachableInstructions();
     void compressInstructions();
     void packInstruction(I &i);
     void adjustJumpOffsets();
