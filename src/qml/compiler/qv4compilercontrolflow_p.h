@@ -144,8 +144,10 @@ struct ControlFlowUnwind : public ControlFlow
     {
         Q_ASSERT(requiresUnwind());
 
+        generator()->setSynthetic(true);
         Instruction::UnwindDispatch dispatch;
         generator()->addInstruction(dispatch);
+        generator()->setSynthetic(false);
     }
 
     virtual BytecodeGenerator::ExceptionHandler *unwindHandler() override {
@@ -307,6 +309,7 @@ struct ControlFlowCatch : public ControlFlowUnwind
 
         // exceptions inside the try block go here
         exceptionLabel.link();
+        generator()->setSynthetic(true);
         BytecodeGenerator::Jump noException = generator()->jumpNoException();
 
         Context *block = cg->enterBlock(catchExpression);
@@ -314,6 +317,7 @@ struct ControlFlowCatch : public ControlFlowUnwind
         block->emitBlockHeader(cg);
 
         generator()->setUnwindHandler(&unwindLabel);
+        generator()->setSynthetic(false);
 
         if (catchExpression->patternElement->bindingIdentifier.isEmpty()) {
             // destructuring pattern
@@ -326,12 +330,14 @@ struct ControlFlowCatch : public ControlFlowUnwind
 
         // exceptions inside catch and break/return statements go here
         unwindLabel.link();
+        generator()->setSynthetic(true);
         block->emitBlockFooter(cg);
 
         cg->leaveBlock();
 
         noException.link();
         generator()->setUnwindHandler(parentUnwindHandler());
+        generator()->setSynthetic(false);
 
         emitUnwindHandler();
         insideCatch = false;

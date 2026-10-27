@@ -160,20 +160,25 @@ void BytecodeGenerator::countLineEntries()
     QList<bool> countInLine(count, false);
     QList<bool> countOutOfLine(count, false);
     for (qsizetype t = 0; t < count; ++t) {
-        countInLine[t] = generated[t].line > 0
+        countInLine[t] = generated[t].line > 0 && !generated[t].synthetic
                 && (t == 0
                     || (fallsThrough(generated[t - 1])
-                        && generated[t - 1].line != generated[t].line));
+                        && (generated[t - 1].synthetic
+                            || generated[t - 1].line != generated[t].line)));
     }
     // A handler is entered from whatever throws or unwinds, not from where it is installed.
     const auto isEdge = [](const I &i) {
         return i.linkedLabel != -1 && i.type != Instr::Type::SetUnwindHandler;
     };
+    const auto entersLine = [&](const I &from, const I &to) {
+        return isEdge(from) && to.line > 0 && !to.synthetic
+                && (from.synthetic || from.line != to.line);
+    };
     for (const I &i : generated) {
-        if (!isEdge(i))
+        if (i.linkedLabel == -1)
             continue;
         const int t = targetOf(i);
-        if (generated[t].line > 0 && generated[t].line != i.line && !countInLine[t])
+        if (entersLine(i, generated[t]) && !countInLine[t])
             countOutOfLine[t] = true;
     }
 
@@ -217,11 +222,10 @@ void BytecodeGenerator::countLineEntries()
         if (generatedInstruction.linkedLabel == -1)
             continue;
         const int target = targetOf(generatedInstruction);
-        const bool entersLine = isEdge(generatedInstruction) && generated[target].line > 0
-                && generated[target].line != generatedInstruction.line;
         I &instruction = instructions[newIndex[t]];
         instruction.linkedLabel = labels.size();
-        labels.append(entersLine ? countIndex[target] : newIndex[target]);
+        labels.append(entersLine(generatedInstruction, generated[target]) ? countIndex[target]
+                                                                         : newIndex[target]);
     }
 
     for (qsizetype k = 0; k < generatedLabels; ++k) {
@@ -318,7 +322,8 @@ QT_WARNING_POP
         currentStatement,
         offsetOfOffset,
         -1,
-        "\0\0"
+        "\0\0",
+        m_synthetic
     };
     uchar *code = instr.packed;
     code = Instr::pack(code, Instr::wideInstructionType(type));

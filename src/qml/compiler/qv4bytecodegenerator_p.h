@@ -236,6 +236,10 @@ QT_WARNING_POP
 
     void setLocation(const QQmlJS::SourceLocation &loc);
     void setLocationOfLastInstruction();
+
+    // Instructions that implement control flow rather than a statement, such as exception
+    // dispatch. They keep the current line, but entering them does not count as entering it.
+    void setSynthetic(bool synthetic) { m_synthetic = synthetic; }
     void incrementStatement();
 
     ExceptionHandler *exceptionHandler() const {
@@ -293,6 +297,7 @@ private:
         int offsetForJump;
         int linkedLabel;
         unsigned char packed[sizeof(Instr) + 2]; // 2 for instruction type
+        bool synthetic;
     };
 
     void countLineEntries();
@@ -314,6 +319,7 @@ private:
     std::unique_ptr<QV4::Compiler::Context::SourceLocationTable> m_sourceLocationTable;
     Compiler::CompilationMode compilationMode = Compiler::CompilationMode::Release;
     bool hasError = false;
+    bool m_synthetic = false;
 
     int lastInstrType = -1;
     Moth::Instr lastInstr;
