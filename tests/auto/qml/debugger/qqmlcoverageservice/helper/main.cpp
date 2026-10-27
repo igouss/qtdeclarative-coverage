@@ -5,12 +5,13 @@
 //
 //   qqmlcoverageservicehelper -qmljsdebugger=... <file or qrc: URL>[,<file or qrc: URL>...]
 //
-// Loads each QML in an engine of its own and runs until killed. With COVERAGE_HELPER_RELEASE set,
+// Loads each QML in an engine of its own and runs until killed or until the QML calls Qt.quit(). With COVERAGE_HELPER_RELEASE set,
 // the last engine is destroyed once its QML is loaded, and the program keeps running without it.
 // With COVERAGE_HELPER_STALL=<ms> as well, the program prints "stalling" and blocks its thread for
 // that long before, so that requests arriving meanwhile find the engine gone when they get to run.
 // With COVERAGE_HELPER_RELEASE_AFTER=<ms>, the last engine is destroyed after that long instead,
 // from the event loop, so that requests arriving before have run.
+// With COVERAGE_HELPER_LEAK set, no engine is ever destroyed, as in a program that leaks them.
 // Prints whether each engine has a debugger attached.
 
 #include <QtCore/qcoreapplication.h>
@@ -38,6 +39,7 @@ int main(int argc, char *argv[])
     std::vector<std::unique_ptr<QObject>> roots;
     for (const QString &file : files) {
         engines.push_back(std::make_unique<QQmlEngine>());
+        QObject::connect(engines.back().get(), &QQmlEngine::quit, &app, &QCoreApplication::quit);
         QQmlComponent component(engines.back().get(),
                                 QUrl::fromUserInput(file, QDir::currentPath()));
         roots.emplace_back(component.create());
@@ -59,5 +61,11 @@ int main(int argc, char *argv[])
     }
     if (const int after = qEnvironmentVariableIntValue("COVERAGE_HELPER_RELEASE_AFTER"))
         QTimer::singleShot(after, release);
+    if (qEnvironmentVariableIsSet("COVERAGE_HELPER_LEAK")) {
+        for (std::unique_ptr<QObject> &root : roots)
+            root.release();
+        for (std::unique_ptr<QQmlEngine> &engine : engines)
+            engine.release();
+    }
     return app.exec();
 }

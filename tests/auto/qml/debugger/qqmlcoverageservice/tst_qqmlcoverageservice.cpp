@@ -131,6 +131,7 @@ public:
 private slots:
     void reportsWhenTheEngineGoesAway();
     void reportsUnexecutedCodeAsZero();
+    void reportsAnEngineLeftAliveAtExit();
     void snapshotAnswersWithItsRound();
     void snapshotHoldsOnlyHitsSinceThePreviousReport();
     void ignoresMalformedRequests();
@@ -232,6 +233,19 @@ void tst_QQmlCoverageService::reportsWhenTheEngineGoesAway()
                                       { 14, 1 },
                                       { 15, 1 } });
     QCOMPARE(lines, others);
+}
+
+void tst_QQmlCoverageService::reportsAnEngineLeftAliveAtExit()
+{
+    QCOMPARE(launchHelper(testFile(QLatin1String("exit.qml")),
+                          { QLatin1String("COVERAGE_HELPER_LEAK=1") }),
+             ConnectSuccess);
+    QTRY_VERIFY(m_client->report(0, url(QLatin1String("exit.qml"))));
+
+    const CoverageFile file = m_client->report(0, url(QLatin1String("exit.qml")))
+                                      ->file(url(QLatin1String("exit.qml")));
+    QCOMPARE(file.calls.value(QLatin1String("sumTo")), 1u);
+    QCOMPARE(file.calls.value(QLatin1String("add")), 3u);
 }
 
 void tst_QQmlCoverageService::reportsUnexecutedCodeAsZero()

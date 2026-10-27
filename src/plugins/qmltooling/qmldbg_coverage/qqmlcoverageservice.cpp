@@ -14,11 +14,14 @@
 #include <private/qversionedpacket_p.h>
 
 #include <QtQml/qjsengine.h>
+#include <QtCore/qcoreapplication.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qmap.h>
 #include <QtCore/qset.h>
 #include <QtCore/qurl.h>
+
+#include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
@@ -155,6 +158,36 @@ QByteArray QQmlCoverageCollector::takeReport(quint32 round, qint32 roundSize)
 QQmlCoverageServiceImpl::QQmlCoverageServiceImpl(QObject *parent)
     : QQmlDebugService(s_key, 1.0f, parent)
 {
+    // Post routines run in reverse order of registration: this one runs before the debug server
+    // stops its thread, while reports can still reach the client.
+    qAddPostRoutine(reportEnginesLeftAlive);
+}
+
+QQmlCoverageServiceImpl::~QQmlCoverageServiceImpl()
+{
+    qRemovePostRoutine(reportEnginesLeftAlive);
+}
+
+// Engines the program never destroys report as the application object goes away. It is destroyed
+// on the main thread, which is where every engine known to the debug server lives.
+void QQmlCoverageServiceImpl::reportEnginesLeftAlive()
+{
+    QQmlCoverageServiceImpl *service = QQmlDebugConnector::service<QQmlCoverageServiceImpl>();
+    if (!service)
+        return;
+    QMutexLocker lock(&service->m_mutex);
+    while (!service->m_collectors.isEmpty())
+        service->sendFinalReport(service->m_collectors.constLast());
+}
+
+// Call with m_mutex locked.
+void QQmlCoverageServiceImpl::sendFinalReport(QQmlCoverageCollector *collector)
+{
+    m_collectors.removeOne(collector);
+    // Its answer to a pending snapshot request will never run; the final report is it.
+    const Round owed = m_owed.take(collector);
+    if (state() == Enabled)
+        emit messageToClient(s_key, collector->takeReport(owed.round, owed.size));
 }
 
 void QQmlCoverageServiceImpl::engineAboutToBeAdded(QJSEngine *engine)
@@ -176,17 +209,12 @@ void QQmlCoverageServiceImpl::engineAboutToBeRemoved(QJSEngine *engine)
     QV4::ExecutionEngine *ee = engine ? engine->handle() : nullptr;
     {
         QMutexLocker lock(&m_mutex);
-        for (qsizetype i = 0; i < m_collectors.size(); ++i) {
-            QQmlCoverageCollector *collector = m_collectors.at(i);
-            if (collector->engine() != ee)
-                continue;
-            m_collectors.removeAt(i);
-            // Its answer to a pending snapshot request will never run; the final report is it.
-            const Round owed = m_owed.take(collector);
-            if (state() == Enabled)
-                emit messageToClient(s_key, collector->takeReport(owed.round, owed.size));
-            break;
-        }
+        const auto it = std::find_if(m_collectors.cbegin(), m_collectors.cend(),
+                                     [ee](const QQmlCoverageCollector *collector) {
+                                         return collector->engine() == ee;
+                                     });
+        if (it != m_collectors.cend())
+            sendFinalReport(*it);
     }
     QQmlDebugService::engineAboutToBeRemoved(engine);
 }

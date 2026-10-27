@@ -44,7 +44,8 @@ class QQmlCoverageCollector;
 //                          qint32 lineCount x (qint32 line, quint64 hits))
 // Every engine asked answers a snapshot request once, with that round and the number of engines
 // asked (roundSize): with a snapshot, or with its final report if it is removed first. Every
-// engine reports when it is removed, with round 0 if it owes no answer. A report holds the hits
+// engine sends a final report when it is removed, or when the application object is destroyed if
+// the program never removes it, with round 0 if it owes no answer. A report holds the hits
 // since the engine's previous report, so a client sums them. A report lists every executable line
 // of each loaded unit, unexecuted ones with 0. source is only set for qrc: units, once per engine.
 class QQmlCoverageServiceImpl : public QQmlDebugService
@@ -54,6 +55,7 @@ public:
     static const QString s_key;
 
     explicit QQmlCoverageServiceImpl(QObject *parent = nullptr);
+    ~QQmlCoverageServiceImpl() override;
 
     void engineAboutToBeAdded(QJSEngine *engine) override;
     void engineAboutToBeRemoved(QJSEngine *engine) override;
@@ -65,6 +67,9 @@ private:
         quint32 round = 0;
         qint32 size = 0;
     };
+
+    static void reportEnginesLeftAlive();
+    void sendFinalReport(QQmlCoverageCollector *collector);
 
     // m_collectors: engine threads add and remove, the server thread reads. m_owed: the server
     // thread adds, engine threads remove.
