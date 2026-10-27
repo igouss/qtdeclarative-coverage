@@ -235,6 +235,7 @@ QT_WARNING_POP
 
 
     void setLocation(const QQmlJS::SourceLocation &loc);
+    void setLocationOfLastInstruction();
     void incrementStatement();
 
     ExceptionHandler *exceptionHandler() const {
