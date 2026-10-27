@@ -3558,7 +3558,8 @@ int Codegen::defineFunction(const QString &name, AST::Node *ast, AST::FormalPara
         bytecodeGenerator->setError(true);
     } else {
         bytecodeGenerator->setLocation(ast->lastSourceLocation());
-        _context->emitBlockFooter(this);
+        if (!functionEndsWithReturn)
+            _context->emitBlockFooter(this);
 
         if (_returnLabel || !functionEndsWithReturn) {
             if (_returnLabel)
