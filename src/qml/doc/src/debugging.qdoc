@@ -251,6 +251,14 @@ for example for a Qt Quick Test suite:
 Sources loaded from resources (\c qrc:) are written next to the tracefile, in
 \c{coverage.info.src}, or in the directory given with \c{--sources}. A file
 with neither a local path nor a source that the application sent is left out.
+
+A file that the application never loads is not reported, so it does not lower
+the totals. With \c{--include <dir>}, every QML (\c{.qml}) and JavaScript
+(\c{.js}, \c{.mjs}) file below the directory that the application did not load
+is listed as well, with all its lines and functions at zero. \c qmlcoverage
+compiles each such file to find its lines, and leaves out, with a warning, a
+file that does not compile. The option can be given more than once.
+
 On Unix, sending \c qmlcoverage SIGINT or SIGTERM, for example with Ctrl+C,
 collects what an application that runs until stopped has executed so far,
 stops it, and writes the tracefile.

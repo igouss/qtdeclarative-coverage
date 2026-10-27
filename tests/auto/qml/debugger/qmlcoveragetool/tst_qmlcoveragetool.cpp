@@ -30,6 +30,26 @@ QStringList lcovRecords(const QString &lcov, const QString &path)
     return lines.mid(start + 1, end - start - 1);
 }
 
+// The records without their counts: which lines and functions a file has, not how often they ran.
+QStringList withoutCounts(const QStringList &records)
+{
+    static const QRegularExpression count(QStringLiteral("^(DA:\\d+),\\d+$|^FNDA:\\d+,(.*)$"));
+    static const QRegularExpression hit(QStringLiteral("^(LH|FNH):"));
+    QStringList result;
+    for (const QString &record : records) {
+        if (hit.match(record).hasMatch())
+            continue;
+        const QRegularExpressionMatch match = count.match(record);
+        if (!match.hasMatch())
+            result.append(record);
+        else if (match.hasCaptured(1))
+            result.append(match.captured(1));
+        else
+            result.append(u"FNDA:"_s + match.captured(2));
+    }
+    return result;
+}
+
 // The pid in the helper's "ready <pid>" line, or 0.
 qint64 readyPid(const QByteArray &output)
 {
@@ -73,10 +93,19 @@ private slots:
     void stopsAProgramThatNeverAnswers();
     void waitsForAProgramThatAnswersLate();
     void takesTheProgramAlongWhenKilled();
+    void writesZerosForFilesTheProgramNeverLoads();
+    void includesTheLinesTheEngineReports_data();
+    void includesTheLinesTheEngineReports();
+    void leavesLoadedFilesAsTheProgramReportsThem();
+    void includesOnlyQmlAndJavaScript();
+    void includesAFileLoadedThroughAnotherPath();
+    void skipsIncludedFilesThatDoNotCompile();
+    void failsOnAMissingIncludeDirectory();
 
 private:
     int runTool(const QStringList &arguments, const QStringList &environment = { });
     QString helper() const;
+    QString includeDir() const { return QFINDTESTDATA("data/include"); }
     QString lcov() const { return readAll(m_output); }
 
     QString m_binDir;
@@ -373,6 +402,107 @@ void tst_QmlCoverageTool::takesTheProgramAlongWhenKilled()
     QVERIFY(process.waitForFinished());
     QTRY_COMPARE(::kill(pid_t(readyPid(output)), 0), -1);
 #endif
+}
+
+
+// none.qml loads none of the other files below include/.
+void tst_QmlCoverageTool::writesZerosForFilesTheProgramNeverLoads()
+{
+    QCOMPARE(runTool({ u"--include"_s, includeDir(), m_binDir + u"/qml"_s,
+                       includeDir() + u"/none.qml"_s }),
+             0);
+    QCOMPARE(lcovRecords(lcov(), includeDir() + u"/lib.js"_s),
+             QStringList({ u"FN:1,%entry"_s, u"FN:1,used"_s, u"FN:5,unused"_s,
+                           u"FNDA:0,%entry"_s, u"FNDA:0,used"_s, u"FNDA:0,unused"_s,
+                           u"FNF:3"_s, u"FNH:0"_s,
+                           u"DA:1,0"_s, u"DA:2,0"_s, u"DA:5,0"_s, u"DA:6,0"_s, u"DA:7,0"_s,
+                           u"DA:8,0"_s, u"LF:6"_s, u"LH:0"_s }));
+}
+
+void tst_QmlCoverageTool::includesTheLinesTheEngineReports_data()
+{
+    QTest::addColumn<QString>("file");
+    QTest::newRow("JavaScript library") << u"lib.js"_s;
+    QTest::newRow("JavaScript module") << u"module.mjs"_s;
+    QTest::newRow("QML component") << u"Widget.qml"_s;
+    QTest::newRow("QML document") << u"all.qml"_s;
+}
+
+// all.qml loads every other file below include/, none.qml none of them.
+void tst_QmlCoverageTool::includesTheLinesTheEngineReports()
+{
+    QFETCH(QString, file);
+    const QString path = includeDir() + u'/' + file;
+    QCOMPARE(runTool({ m_binDir + u"/qml"_s, includeDir() + u"/all.qml"_s }), 0);
+    const QStringList loaded = lcovRecords(lcov(), path);
+    QVERIFY(!loaded.isEmpty());
+
+    QCOMPARE(runTool({ u"--include"_s, includeDir(), m_binDir + u"/qml"_s,
+                       includeDir() + u"/none.qml"_s }),
+             0);
+    const QStringList included = lcovRecords(lcov(), path);
+    QCOMPARE(withoutCounts(included), withoutCounts(loaded));
+    QVERIFY(included.contains(u"LH:0"_s));
+    QVERIFY(included.contains(u"FNH:0"_s));
+}
+
+void tst_QmlCoverageTool::leavesLoadedFilesAsTheProgramReportsThem()
+{
+    const QStringList program({ m_binDir + u"/qml"_s, includeDir() + u"/all.qml"_s });
+    QCOMPARE(runTool(program), 0);
+    const QString alone = lcov();
+
+    QCOMPARE(runTool(QStringList({ u"--include"_s, includeDir() }) + program), 0);
+    QCOMPARE(lcovRecords(lcov(), includeDir() + u"/all.qml"_s),
+             lcovRecords(alone, includeDir() + u"/all.qml"_s));
+    QCOMPARE(lcovRecords(lcov(), includeDir() + u"/Widget.qml"_s),
+             lcovRecords(alone, includeDir() + u"/Widget.qml"_s));
+    QCOMPARE(lcovRecords(lcov(), includeDir() + u"/lib.js"_s),
+             lcovRecords(alone, includeDir() + u"/lib.js"_s));
+    QCOMPARE(lcovRecords(lcov(), includeDir() + u"/module.mjs"_s),
+             lcovRecords(alone, includeDir() + u"/module.mjs"_s));
+    QCOMPARE(lcov().count(u"SF:"_s + includeDir()), 5); // and none.qml, with zeros
+}
+
+void tst_QmlCoverageTool::includesOnlyQmlAndJavaScript()
+{
+    QCOMPARE(runTool({ u"--include"_s, includeDir(), m_binDir + u"/qml"_s,
+                       includeDir() + u"/none.qml"_s }),
+             0);
+    QVERIFY(!lcov().contains(u"notes.txt"_s));
+}
+
+// The program loads all.qml through a symbolic link to include/, the tool reads include/ itself.
+void tst_QmlCoverageTool::includesAFileLoadedThroughAnotherPath()
+{
+    const QString link = m_dir.filePath(u"link"_s);
+    if (!QFile::exists(link) && !QFile::link(includeDir(), link))
+        QSKIP("Cannot create a symbolic link");
+    QCOMPARE(runTool({ u"--include"_s, includeDir(), m_binDir + u"/qml"_s,
+                       link + u"/all.qml"_s }),
+             0);
+    QVERIFY(lcovRecords(lcov(), includeDir() + u"/all.qml"_s).isEmpty());
+    QVERIFY(lcovRecords(lcov(), link + u"/all.qml"_s).contains(u"LH:5"_s));
+}
+
+void tst_QmlCoverageTool::skipsIncludedFilesThatDoNotCompile()
+{
+    const QString broken = QFINDTESTDATA("data/include-broken");
+    QCOMPARE(runTool({ u"--include"_s, broken, m_binDir + u"/qml"_s,
+                       includeDir() + u"/none.qml"_s }),
+             0);
+    QVERIFY(m_toolOutput.contains(u"qmlcoverage: cannot compile "_s + broken
+                                  + u"/broken.qml"_s));
+    QVERIFY(!lcov().contains(u"broken.qml"_s));
+}
+
+void tst_QmlCoverageTool::failsOnAMissingIncludeDirectory()
+{
+    const QString missing = m_dir.filePath(u"missing"_s);
+    QCOMPARE(runTool({ u"--include"_s, missing, m_binDir + u"/qml"_s,
+                       includeDir() + u"/none.qml"_s }),
+             2);
+    QVERIFY(m_toolOutput.contains(u"qmlcoverage: no directory "_s + missing));
 }
 
 QTEST_GUILESS_MAIN(tst_QmlCoverageTool)

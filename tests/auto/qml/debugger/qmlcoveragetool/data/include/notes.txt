@@ -1,0 +1,1 @@
+Not QML or JavaScript: qmlcoverage --include leaves this file out.

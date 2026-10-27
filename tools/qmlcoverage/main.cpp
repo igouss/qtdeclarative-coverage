@@ -3,11 +3,12 @@
 
 // qmlcoverage: runs a QML program with the CodeCoverage debug service and writes lcov.
 //
-//   qmlcoverage -o coverage.info <program> [args...]
+//   qmlcoverage -o coverage.info [--include <dir>...] <program> [args...]
 //
 // On Unix, for a program that runs until stopped, send qmlcoverage SIGINT or SIGTERM (Ctrl+C): it
 // takes a final snapshot from every engine, stops the program and writes the report.
 
+#include "qmlcoverageinclude.h"
 #include "qmlcoveragereport.h"
 
 #include <private/qpacket_p.h>
@@ -16,6 +17,7 @@
 
 #include <QtCore/qcommandlineparser.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtCore/qfileinfo.h>
 #include <QtCore/qprocess.h>
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qtimer.h>
@@ -95,8 +97,14 @@ int main(int argc, char *argv[])
     const QCommandLineOption sourcesOption(
             u"sources"_s, u"Directory for sources the program sent (qrc:). Default: <output>.src"_s,
             u"dir"_s);
+    const QCommandLineOption includeOption(
+            u"include"_s,
+            u"Directory whose QML and JavaScript files the report lists even if the program never "
+            "loads them, as not executed. Can be given more than once."_s,
+            u"dir"_s);
     parser.addOption(outputOption);
     parser.addOption(sourcesOption);
+    parser.addOption(includeOption);
     parser.addPositionalArgument(u"program"_s, u"Program to run."_s);
     parser.addPositionalArgument(u"args"_s, u"Its arguments."_s, u"[args...]"_s);
     parser.process(app);
@@ -108,6 +116,13 @@ int main(int argc, char *argv[])
     const QString output = parser.value(outputOption);
     const QString sourceDir =
             parser.isSet(sourcesOption) ? parser.value(sourcesOption) : output + u".src"_s;
+    const QStringList includeDirs = parser.values(includeOption);
+    for (const QString &dir : includeDirs) {
+        if (!QFileInfo(dir).isDir()) {
+            std::fprintf(stderr, "qmlcoverage: no directory %s\n", qPrintable(dir));
+            return 2;
+        }
+    }
 
     QTemporaryDir socketDir;
     if (!socketDir.isValid()) {
@@ -209,16 +224,23 @@ int main(int argc, char *argv[])
         return 4;
     }
 
+    QmlCoverage::Files files = collector.files();
+    QStringList uncompiled;
+    for (const QString &dir : includeDirs)
+        QmlCoverage::includeUnloaded(&files, dir, &uncompiled);
+    for (const QString &failure : std::as_const(uncompiled))
+        std::fprintf(stderr, "qmlcoverage: cannot compile %s\n", qPrintable(failure));
+
     QStringList skipped;
     QString failedPath;
-    if (!QmlCoverage::writeLcov(collector.files(), output, sourceDir, &skipped, &failedPath)) {
+    if (!QmlCoverage::writeLcov(files, output, sourceDir, &skipped, &failedPath)) {
         std::fprintf(stderr, "qmlcoverage: cannot write %s\n", qPrintable(failedPath));
         return 2;
     }
     for (const QString &url : std::as_const(skipped))
         std::fprintf(stderr, "qmlcoverage: no source for %s; not written\n", qPrintable(url));
     std::fprintf(stderr, "qmlcoverage: %d report(s), %lld file(s) -> %s\n", collector.reports(),
-                 qlonglong(collector.files().size() - skipped.size()), qPrintable(output));
+                 qlonglong(files.size() - skipped.size()), qPrintable(output));
 #ifdef Q_OS_UNIX
     if (snapshotTimedOut)
         return 5;

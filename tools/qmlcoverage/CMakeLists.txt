@@ -7,10 +7,12 @@ qt_internal_add_tool(${target_name}
     TOOLS_TARGET Qml
     SOURCES
         main.cpp
+        qmlcoverageinclude.cpp qmlcoverageinclude.h
         qmlcoveragereport.cpp qmlcoveragereport.h
     LIBRARIES
         Qt::Network
         Qt::PacketProtocolPrivate
+        Qt::QmlCompilerPrivate
         Qt::QmlDebugPrivate
 )
 qt_internal_return_unless_building_tools()
