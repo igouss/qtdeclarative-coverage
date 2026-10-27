@@ -52,6 +52,8 @@ namespace Compiler {
     struct Context;
     struct JSUnitGenerator;
     class Codegen;
+
+    enum class CompilationMode { Release, Debug };
 }
 
 namespace Moth {

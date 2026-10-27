@@ -816,7 +816,7 @@ void QQmlTypeData::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *un
     }
 
     m_document.reset(
-            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->isDebugging()));
+            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->compilationMode()));
     QQmlIRLoader loader(unit->qmlData, m_document.data());
     loader.load();
     m_document->javaScriptCompilationUnit
@@ -831,7 +831,7 @@ bool QQmlTypeData::loadFromSource()
     assertTypeLoaderThread();
 
     m_document.reset(
-            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->isDebugging()));
+            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->compilationMode()));
     m_document->jsModule.sourceTimeStamp = m_backupSourceCode.sourceTimeStamp();
     QmlIR::IRBuilder compiler;
 
@@ -864,7 +864,7 @@ void QQmlTypeData::restoreIR(const QQmlRefPointer<QV4::CompiledData::Compilation
     assertTypeLoaderThread();
 
     m_document.reset(
-            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->isDebugging()));
+            new QmlIR::Document(urlString(), finalUrlString(), m_typeLoader->compilationMode()));
     QQmlIRLoader loader(unit->unitData(), m_document.data());
     loader.load();
     m_document->javaScriptCompilationUnit = unit;
