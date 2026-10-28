@@ -2761,6 +2761,20 @@ void QQmlJSCodeGenerator::generate_SetException()
     BYTECODE_UNIMPLEMENTED();
 }
 
+void QQmlJSCodeGenerator::generate_SuspendUnwind(int levelReg, int targetReg)
+{
+    Q_UNUSED(levelReg)
+    Q_UNUSED(targetReg)
+    BYTECODE_UNIMPLEMENTED();
+}
+
+void QQmlJSCodeGenerator::generate_ResumeUnwind(int levelReg, int targetReg)
+{
+    Q_UNUSED(levelReg)
+    Q_UNUSED(targetReg)
+    BYTECODE_UNIMPLEMENTED();
+}
+
 void QQmlJSCodeGenerator::generate_CreateCallContext()
 {
     INJECT_TRACE_INFO(generate_CreateCallContext);

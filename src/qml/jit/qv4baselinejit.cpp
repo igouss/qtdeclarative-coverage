@@ -517,6 +517,16 @@ void BaselineJIT::generate_ThrowException()
 void BaselineJIT::generate_GetException() { as->getException(); }
 void BaselineJIT::generate_SetException() { as->setException(); }
 
+void BaselineJIT::generate_SuspendUnwind(int levelReg, int targetReg)
+{
+    as->suspendUnwind(levelReg, targetReg);
+}
+
+void BaselineJIT::generate_ResumeUnwind(int levelReg, int targetReg)
+{
+    as->resumeUnwind(levelReg, targetReg);
+}
+
 void BaselineJIT::generate_CreateCallContext()
 {
     STORE_ACC();

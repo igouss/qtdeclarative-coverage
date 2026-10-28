@@ -196,6 +196,20 @@ struct Q_QML_EXPORT JSTypesStackFrame : public CppStackFrame
 
     const Value *argv() const { return originalArguments; }
 
+    void suspendUnwind(const char *codeStart, Value *level, Value *target)
+    {
+        *level = Value::fromInt32(unwindLevel);
+        *target = Value::fromInt32(unwindLevel ? int(unwindLabel - codeStart) : 0);
+        unwindLevel = 0;
+        unwindLabel = nullptr;
+    }
+
+    void resumeUnwind(const char *codeStart, const Value &level, const Value &target)
+    {
+        unwindLevel = level.int_32();
+        unwindLabel = unwindLevel ? codeStart + target.int_32() : nullptr;
+    }
+
     static uint requiredJSStackFrameSize(uint nRegisters) {
         return CallData::HeaderSize() + nRegisters;
     }

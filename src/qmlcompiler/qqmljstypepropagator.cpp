@@ -1749,6 +1749,22 @@ void QQmlJSTypePropagator::generate_SetException()
     INSTR_PROLOGUE_NOT_IMPLEMENTED();
 }
 
+void QQmlJSTypePropagator::generate_SuspendUnwind(int levelReg, int targetReg)
+{
+    m_state.setHasInternalSideEffects();
+    Q_UNUSED(levelReg)
+    Q_UNUSED(targetReg)
+    INSTR_PROLOGUE_NOT_IMPLEMENTED();
+}
+
+void QQmlJSTypePropagator::generate_ResumeUnwind(int levelReg, int targetReg)
+{
+    m_state.setHasInternalSideEffects();
+    Q_UNUSED(levelReg)
+    Q_UNUSED(targetReg)
+    INSTR_PROLOGUE_NOT_IMPLEMENTED();
+}
+
 void QQmlJSTypePropagator::generate_CreateCallContext()
 {
     m_state.setHasInternalSideEffects();
@@ -2513,6 +2529,8 @@ bool QQmlJSTypePropagator::populatesAccumulator(QV4::Moth::Instr::Type instr) co
     case QV4::Moth::Instr::Type::Resume:
     case QV4::Moth::Instr::Type::Ret:
     case QV4::Moth::Instr::Type::SetException:
+    case QV4::Moth::Instr::Type::SuspendUnwind:
+    case QV4::Moth::Instr::Type::ResumeUnwind:
     case QV4::Moth::Instr::Type::SetLookup:
     case QV4::Moth::Instr::Type::SetUnwindHandler:
     case QV4::Moth::Instr::Type::StoreElement:

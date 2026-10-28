@@ -376,6 +376,14 @@ QString dumpBytecode(
         MOTH_BEGIN_INSTR(SetException)
         MOTH_END_INSTR(SetExceptionFlag)
 
+        MOTH_BEGIN_INSTR(SuspendUnwind)
+            s << dumpRegister(levelReg, nFormals) << ", " << dumpRegister(targetReg, nFormals);
+        MOTH_END_INSTR(SuspendUnwind)
+
+        MOTH_BEGIN_INSTR(ResumeUnwind)
+            s << dumpRegister(levelReg, nFormals) << ", " << dumpRegister(targetReg, nFormals);
+        MOTH_END_INSTR(ResumeUnwind)
+
         MOTH_BEGIN_INSTR(CreateCallContext)
         MOTH_END_INSTR(CreateCallContext)
 

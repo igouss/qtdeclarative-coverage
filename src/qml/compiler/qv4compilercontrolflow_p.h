@@ -383,6 +383,10 @@ struct ControlFlowFinally : public ControlFlowUnwind
         Instruction::GetException instr;
         generator()->addInstruction(instr);
         Reference::fromStackSlot(cg, exceptionTemp).storeConsumeAccumulator();
+        Instruction::SuspendUnwind suspend;
+        suspend.levelReg = generator()->newRegister();
+        suspend.targetReg = generator()->newRegister();
+        generator()->addInstruction(suspend);
 
         generator()->setUnwindHandler(parentUnwindHandler());
         cg->statement(finally->statement);
@@ -394,6 +398,10 @@ struct ControlFlowFinally : public ControlFlowUnwind
             move.destReg = cg->_returnAddress;
             generator()->addInstruction(move);
         }
+        Instruction::ResumeUnwind resume;
+        resume.levelReg = suspend.levelReg;
+        resume.targetReg = suspend.targetReg;
+        generator()->addInstruction(resume);
         Reference::fromStackSlot(cg, exceptionTemp).loadInAccumulator();
         Instruction::SetException setException;
         generator()->addInstruction(setException);

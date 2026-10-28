@@ -98,6 +98,8 @@ public:
     void generate_ThrowException() override;
     void generate_GetException() override;
     void generate_SetException() override;
+    void generate_SuspendUnwind(int levelReg, int targetReg) override;
+    void generate_ResumeUnwind(int levelReg, int targetReg) override;
     void generate_CreateCallContext() override;
     void generate_PushCatchContext(int index, int name) override;
     void generate_PushWithContext() override;

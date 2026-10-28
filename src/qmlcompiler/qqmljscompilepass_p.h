@@ -616,6 +616,8 @@ protected:
     void generate_Resume(int) override {}
     void generate_Ret() override {}
     void generate_SetException() override {}
+    void generate_SuspendUnwind(int, int) override {}
+    void generate_ResumeUnwind(int, int) override {}
     void generate_SetLookup(int, int) override {}
     void generate_SetUnwindHandler(int) override {}
     void generate_Shl(int) override {}

@@ -933,6 +933,14 @@ QV4::ReturnedValue VME::interpret(JSTypesStackFrame *frame, ExecutionEngine *eng
         }
     MOTH_END_INSTR(SetException)
 
+    MOTH_BEGIN_INSTR(SuspendUnwind)
+        frame->suspendUnwind(function->codeData, &STACK_VALUE(levelReg), &STACK_VALUE(targetReg));
+    MOTH_END_INSTR(SuspendUnwind)
+
+    MOTH_BEGIN_INSTR(ResumeUnwind)
+        frame->resumeUnwind(function->codeData, STACK_VALUE(levelReg), STACK_VALUE(targetReg));
+    MOTH_END_INSTR(ResumeUnwind)
+
     MOTH_BEGIN_INSTR(PushCatchContext)
         Runtime::PushCatchContext::call(engine, index, name);
     MOTH_END_INSTR(PushCatchContext)

@@ -1549,6 +1549,45 @@ void BaselineAssembler::setException()
     noException.link(pasm());
 }
 
+static const char *jittedCodeStart(const JSTypesStackFrame *frame)
+{
+    return reinterpret_cast<const char *>(frame->v4Function->jittedCode);
+}
+
+static void suspendUnwindHelper(JSTypesStackFrame *frame, Value *level, Value *target)
+{
+    frame->suspendUnwind(jittedCodeStart(frame), level, target);
+}
+
+static void resumeUnwindHelper(JSTypesStackFrame *frame, const Value *level, const Value *target)
+{
+    frame->resumeUnwind(jittedCodeStart(frame), *level, *target);
+}
+
+void BaselineAssembler::suspendUnwind(int levelReg, int targetReg)
+{
+    saveAccumulatorInFrame();
+    pasm()->prepareCallWithArgCount(3);
+    pasm()->passJSSlotAsArg(targetReg, 2);
+    pasm()->passJSSlotAsArg(levelReg, 1);
+    pasm()->passCppFrameAsArg(0);
+    pasm()->PlatformAssemblerCommon::callRuntime(
+            reinterpret_cast<const void *>(&suspendUnwindHelper), "suspendUnwindHelper");
+    loadAccumulatorFromFrame();
+}
+
+void BaselineAssembler::resumeUnwind(int levelReg, int targetReg)
+{
+    saveAccumulatorInFrame();
+    pasm()->prepareCallWithArgCount(3);
+    pasm()->passJSSlotAsArg(targetReg, 2);
+    pasm()->passJSSlotAsArg(levelReg, 1);
+    pasm()->passCppFrameAsArg(0);
+    pasm()->PlatformAssemblerCommon::callRuntime(
+            reinterpret_cast<const void *>(&resumeUnwindHelper), "resumeUnwindHelper");
+    loadAccumulatorFromFrame();
+}
+
 int BaselineAssembler::setUnwindHandler(int offset)
 {
     auto l = pasm()->storePtrWithPatch(TrustedImmPtr(nullptr), pasm()->exceptionHandlerAddress());

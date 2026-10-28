@@ -124,6 +124,8 @@ public:
     void gotoCatchException();
     void getException();
     void setException();
+    void suspendUnwind(int levelReg, int targetReg);
+    void resumeUnwind(int levelReg, int targetReg);
     Q_REQUIRED_RESULT int setUnwindHandler(int offset);
     void clearUnwindHandler();
     void unwindDispatch();

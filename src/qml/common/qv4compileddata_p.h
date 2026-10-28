@@ -55,7 +55,7 @@ QT_BEGIN_NAMESPACE
 // benefit that if another patch changes the version too, it will result in a merge conflict, and
 // not get removed silently.
 // Also update the comparison functions in qqmlpreviewdiff.cpp when you change the data structures.
-#define QV4_DATA_STRUCTURE_VERSION 0x53 // Stop folding qualified enums at compile time
+#define QV4_DATA_STRUCTURE_VERSION 0x54 // Suspend a pending unwind while a finally block runs
 
 class QIODevice;
 class QQmlTypeNameCache;
