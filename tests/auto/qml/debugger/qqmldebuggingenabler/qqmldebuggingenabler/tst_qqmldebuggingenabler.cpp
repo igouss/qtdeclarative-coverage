@@ -7,10 +7,12 @@
 
 #include <private/qqmldebugclient_p.h>
 #include <private/qqmldebugconnection_p.h>
+#include <private/qqmlenginecontrolclient_p.h>
 
 #include <QtQml/qqmldebug.h>
 
 #include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
 #include <QtCore/qprocess.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qfileinfo.h>
@@ -30,6 +32,8 @@ private slots:
     void qmlscene();
     void custom_data();
     void custom();
+    void parentedEngineExits();
+    void parentedEngineIsRemovedForConnectedClient();
 
 private:
     void data();
@@ -160,6 +164,43 @@ void tst_QQmlDebuggingEnabler::custom()
         QTRY_VERIFY_WITH_TIMEOUT(m_process->output().contains(QLatin1String("QQmlEngine created")),
                                  15000);
     }
+}
+
+void tst_QQmlDebuggingEnabler::parentedEngineExits()
+{
+    m_process = new QQmlDebugProcess(QCoreApplication::applicationDirPath() +
+                                     QLatin1String("/qqmldebuggingenablerserver"), this);
+    m_process->setMaximumBindErrors(10);
+    m_process->start({ QLatin1String("-parented"), QLatin1String("-connector"),
+                       QLatin1String("QQmlDebugServer"), QLatin1String("5555"),
+                       QLatin1String("5565") });
+
+    QTRY_COMPARE_WITH_TIMEOUT(m_process->state(), QProcess::NotRunning, 15000);
+    QCOMPARE(m_process->exitStatus(), QProcess::NormalExit);
+    QVERIFY(m_process->output().contains(QLatin1String("QQmlEngine created")));
+}
+
+void tst_QQmlDebuggingEnabler::parentedEngineIsRemovedForConnectedClient()
+{
+    m_process = new QQmlDebugProcess(QCoreApplication::applicationDirPath() +
+                                     QLatin1String("/qqmldebuggingenablerserver"), this);
+    m_process->setMaximumBindErrors(10);
+    m_process->start({ QLatin1String("-parented"), QLatin1String("-block"),
+                       QLatin1String("-connector"), QLatin1String("QQmlDebugServer"),
+                       QLatin1String("5555"), QLatin1String("5565"),
+                       QLatin1String("-services"), QLatin1String("EngineControl") });
+
+    QVERIFY(m_process->waitForSessionStart());
+    m_connection = new QQmlDebugConnection();
+    QQmlEngineControlClient *client = new QQmlEngineControlClient(m_connection);
+    m_clients = { client };
+    QSignalSpy removed(client, &QQmlEngineControlClient::engineRemoved);
+    m_connection->connectToHost("127.0.0.1", m_process->debugPort());
+    QVERIFY(m_connection->waitForConnected());
+
+    QTRY_COMPARE_WITH_TIMEOUT(m_process->state(), QProcess::NotRunning, 15000);
+    QCOMPARE(m_process->exitStatus(), QProcess::NormalExit);
+    QCOMPARE(removed.size(), 1);
 }
 
 QTEST_MAIN(tst_QQmlDebuggingEnabler)

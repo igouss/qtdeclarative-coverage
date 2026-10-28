@@ -166,6 +166,14 @@ void QQmlDebugServerImpl::cleanup()
     if (!server)
         return;
 
+    // Engines that outlive the application can only be removed while the thread is still running.
+    const QList<QJSEngine *> engines = [server]() {
+        QMutexLocker locker(&server->m_helloMutex);
+        return server->m_engineConditions.keys();
+    }();
+    for (QJSEngine *engine : engines)
+        server->removeEngine(engine);
+
     {
         QObject signalSource;
         for (QHash<QString, QQmlDebugService *>::ConstIterator i = server->m_plugins.constBegin();

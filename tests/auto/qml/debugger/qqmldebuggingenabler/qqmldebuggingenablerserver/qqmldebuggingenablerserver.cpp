@@ -4,6 +4,7 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qtimer.h>
 #include <QtQml/qqmldebug.h>
 #include <QtQml/qqmlengine.h>
 
@@ -17,6 +18,12 @@ int main(int argc, char *argv[])
       QStringList arguments = app.arguments();
       arguments.removeFirst();
       QString connector = QLatin1String("QQmlDebugServer");
+
+      bool parented = false;
+      if (arguments.size() && arguments.first() == QLatin1String("-parented")) {
+          parented = true;
+          arguments.removeFirst();
+      }
 
       if (arguments.size() && arguments.first() == QLatin1String("-block")) {
           block = QQmlDebuggingEnabler::WaitForClient;
@@ -46,6 +53,13 @@ int main(int argc, char *argv[])
           QVariantHash configuration;
           configuration[QLatin1String("block")] = (block == QQmlDebuggingEnabler::WaitForClient);
           QQmlDebuggingEnabler::startDebugConnector(connector, configuration);
+      }
+
+      if (parented) {
+          new QQmlEngine(&app);
+          qDebug() << "QQmlEngine created\n";
+          QTimer::singleShot(0, &app, &QCoreApplication::quit);
+          return app.exec();
       }
 
       QQmlEngine engine;
